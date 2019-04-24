@@ -40,7 +40,7 @@ TEST(cpp, result)
 
 TEST(cpp, vm)
 {
-    auto vm = evmc::vm{evmc_create_example_vm()};
+    auto vm = evmc::VM{evmc_create_example_vm()};
     EXPECT_TRUE(vm.is_abi_compatible());
 
     auto r = vm.set_option("verbose", "3");
@@ -60,7 +60,7 @@ TEST(cpp, vm_set_option)
                                   nullptr,          nullptr, nullptr, nullptr};
     raw_instance.destroy = [](evmc_instance*) {};
 
-    auto vm = evmc::vm{&raw_instance};
+    auto vm = evmc::VM{&raw_instance};
     EXPECT_EQ(vm.set_option("1", "2"), EVMC_SET_OPTION_INVALID_NAME);
 }
 

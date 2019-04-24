@@ -40,15 +40,14 @@ public:
     }
 };
 
-class vm
+class VM
 {
 public:
-    explicit vm(evmc_instance* instance) noexcept : m_instance{instance} {}
-    ~vm() noexcept { m_instance->destroy(m_instance); }
+    explicit VM(evmc_instance* instance) noexcept : m_instance{instance} {}
+    ~VM() noexcept { m_instance->destroy(m_instance); }
 
-    vm(evmc_instance* instance,
-       std::initializer_list<std::pair<const char*, const char*>> options) noexcept
-      : m_instance{instance}
+    VM(evmc_instance* instance, std::initializer_list<std::pair<const char*, const char*>> options)
+    noexcept : m_instance{instance}
     {
         for (auto option : options)
             set_option(option.first, option.second);
