@@ -5,6 +5,8 @@
 
 pub extern crate evmc_sys;
 pub use evmc_sys as ffi;
+pub use paste::expr;
+pub use paste::item;
 
 // TODO: Add helpers for host interface
 // TODO: Add convenient helpers for evmc_execute
@@ -16,6 +18,11 @@ pub struct ExecutionResult {
     gas_left: i64,
     output: Option<Vec<u8>>,
     create_address: ffi::evmc_address,
+}
+
+pub trait EvmcVM {
+    fn init() -> Self;
+    fn execute(&self, code: &[u8] /*context goes here*/) -> ExecutionResult;
 }
 
 impl ExecutionResult {
@@ -168,10 +175,145 @@ extern "C" fn release_stack_result(result: *const ffi::evmc_result) {
     }
 }
 
+pub mod macros {
+    #[macro_export]
+    macro_rules! evmc_create_vm {
+        ($__vm:ident, $__version:expr) => {
+            item! {
+                static [<$__vm _NAME>]: &'static str = stringify!($__vm);
+                static [<$__vm _VERSION>]: &'static str = $__version;
+            }
+
+            item! {
+                #[derive(Clone)]
+                #[repr(C)]
+                struct [<$__vm Instance>] {
+                    inner: ffi::evmc_instance,
+                    vm: $__vm,
+                }
+            }
+
+            item! {
+                impl [<$__vm Instance>] {
+                    pub fn new() -> Self {
+                        //$__vm must implement EvmcVM
+                        [<$__vm Instance>] {
+                            inner: ffi::evmc_instance {
+                                abi_version: ffi::EVMC_ABI_VERSION as i32,
+                                destroy: expr! { Some([<$__vm _destroy>]) },
+                                execute: expr! { Some([<$__vm _execute>]) },
+                                get_capabilities: expr! { Some([<$__vm _get_capabilities>]) },
+                                set_option: None,
+                                set_tracer: None,
+                                name: {
+                                    let c_str = expr! { std::ffi::CString::new([<$__vm _NAME>]).expect("Failed to build EVMC name string") };
+                                    c_str.into_raw() as *const i8
+                                },
+                                version: {
+                                    let c_str = expr! { std::ffi::CString::new([<$__vm _VERSION>]).expect("Failed to build EVMC version string") };
+                                    c_str.into_raw() as *const i8
+                                },
+                            },
+                            vm: $__vm::init(),
+                        }
+                    }
+
+                    pub fn get_vm(&self) -> &$__vm {
+                        &self.vm
+                    }
+
+                    pub fn get_inner(&self) -> &ffi::evmc_instance {
+                        &self.inner
+                    }
+
+                    pub fn into_inner_raw(self) -> *mut ffi::evmc_instance {
+                        Box::into_raw(Box::new(self)) as *mut ffi::evmc_instance
+                    }
+
+                    // Assumes the pointer is casted from another instance of Self. otherwise UB
+                    pub unsafe fn coerce_from_raw(raw: *mut ffi::evmc_instance) -> Self {
+                        let borrowed = (raw as *mut [<$__vm Instance>]).as_ref();
+                        if let Some(instance) = borrowed {
+                            let ret = instance.clone();
+                            // deallocate the old heap-allocated instance.
+                            Box::from_raw(raw);
+                            ret
+                        } else {
+                            panic!();
+                        }
+                    }
+                }
+            }
+
+            item! {
+                extern "C" fn [<$__vm _execute>](
+                    instance: *mut ffi::evmc_instance,
+                    context: *mut ffi::evmc_context,
+                    rev: ffi::evmc_revision,
+                    msg: *const ffi::evmc_message,
+                    code: *const u8,
+                    code_size: usize,
+                ) -> ffi::evmc_result {
+                    assert!(code_size < std::isize::MAX as usize);
+                    assert!(!code.is_null());
+                    let code_ref: &[u8] = unsafe {
+                        std::slice::from_raw_parts(code, code_size)
+                    };
+
+                    assert!(!msg.is_null());
+                    assert!(!context.is_null());
+                    assert!(!instance.is_null());
+                    /*
+                    let host = unsafe {
+                        InterfaceManager::new(&rev,
+                            &*msg,
+                            &mut *context,
+                            &mut *instance)
+                    };
+                    */
+
+                    let instance = unsafe { [<$__vm Instance>]::coerce_from_raw(instance) };
+                    let result: ExecutionResult = instance.get_vm().execute(code_ref /*interface goes here*/);
+                                    result.into()
+                    //ffi::evmc_result {
+                    //    create_address: ffi::evmc_address { bytes: [0u8; 20] },
+                    //    gas_left: 0,
+                    //    output_data: 0 as *const u8,
+                    //    output_size: 0,
+                    //    release: None,
+                    //    status_code: ffi::evmc_status_code::EVMC_FAILURE,
+                    //    padding: [0u8; 4],
+                    //}
+                }
+            }
+
+            item! {
+                extern "C" fn [<$__vm _get_capabilities>](instance: *mut ffi::evmc_instance) -> ffi::evmc_capabilities_flagset {
+                    ffi::evmc_capabilities::EVMC_CAPABILITY_EVM1 as u32
+                }
+            }
+
+            item! {
+                extern "C" fn [<$__vm _destroy>](instance: *mut ffi::evmc_instance) {
+                    // The EVMC specification ensures instance cannot be null.
+                    // Cast to the enclosing struct so that the extra data gets deallocated too.
+                    let todrop = instance as *mut [<$__vm Instance>];
+                    drop(unsafe { Box::from_raw(todrop) })
+                }
+            }
+
+            item! {
+                #[no_mangle]
+                extern "C" fn [<evmc_create_ $__vm>]() -> *const ffi::evmc_instance {
+                    expr! { [<$__vm Instance>]::new().into_inner_raw() }
+                }
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use evmc_sys as ffi;
 
     #[test]
     fn new_result() {
@@ -308,4 +450,18 @@ mod tests {
             }
         }
     }
+
+    #[derive(Clone)]
+    pub struct foovm;
+
+    impl EvmcVM for foovm {
+        fn init() -> Self {
+            foovm
+        }
+
+        fn execute(&self, code: &[u8]) -> ExecutionResult {
+            unimplemented!()
+        }
+    }
+    evmc_create_vm!(foovm, "0.5");
 }
