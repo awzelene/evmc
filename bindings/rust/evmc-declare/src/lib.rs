@@ -59,7 +59,9 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
                     if let Lit::Str(s) = l {
                         s.value()
                     } else {
-                        panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal")
+                        panic!(
+                            "Literal passed to evmc_declare_vm is not a valid UTF-8 string literal"
+                        )
                     }
                 }
             }
