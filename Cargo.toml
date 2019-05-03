@@ -2,5 +2,6 @@
 members = [
     "bindings/rust/evmc-sys",
     "bindings/rust/evmc-vm",
+    "bindings/rust/evmc-derive",
     "examples/example-rust-vm"
 ]
