@@ -5,3 +5,6 @@ authors = ["Jake Lang <jak3lang@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+
+[lib]
+proc-macro = true
