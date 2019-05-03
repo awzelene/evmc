@@ -1,5 +1,5 @@
 [package]
-name = "evmc-bind"
+name = "evmc-declare"
 version = "0.1.0"
 authors = ["Jake Lang <jak3lang@gmail.com>"]
 edition = "2018"

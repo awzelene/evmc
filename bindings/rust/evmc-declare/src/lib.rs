@@ -12,7 +12,7 @@ use syn::MetaList;
 use syn::NestedMeta;
 
 #[proc_macro_attribute]
-pub fn evmc_raw(args: TokenStream, item: TokenStream) -> TokenStream {
+pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // First, try to parse the input token stream into an AST node representing a struct
     // declaration.
     let input: ItemStruct = parse_macro_input!(item as ItemStruct);
@@ -38,7 +38,7 @@ pub fn evmc_raw(args: TokenStream, item: TokenStream) -> TokenStream {
         // If we have more than one argument, throw a compile error. Otherwise, extract the item
         // and try to form a valid stylized name from it.
         if meta.nested.len() != 1 {
-            panic!("More than one meta-item supplied to evmc_raw")
+            panic!("More than one meta-item supplied to evmc_declare_vm")
         } else {
             match meta
                 .nested
@@ -51,7 +51,7 @@ pub fn evmc_raw(args: TokenStream, item: TokenStream) -> TokenStream {
                     if let Meta::Word(id) = m {
                         id.to_string()
                     } else {
-                        panic!("Meta-item passed to evmc_raw is not a valid identifier")
+                        panic!("Meta-item passed to evmc_declare_vm is not a valid identifier")
                     }
                 }
                 NestedMeta::Literal(l) => {
@@ -59,7 +59,7 @@ pub fn evmc_raw(args: TokenStream, item: TokenStream) -> TokenStream {
                     if let Lit::Str(s) = l {
                         s.value()
                     } else {
-                        panic!("Literal passed to evmc_raw is not a valid UTF-8 string literal")
+                        panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal")
                     }
                 }
             }
