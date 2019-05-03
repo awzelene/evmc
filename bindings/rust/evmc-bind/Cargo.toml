@@ -1,10 +1,16 @@
 [package]
-name = "evmc-derive"
+name = "evmc-bind"
 version = "0.1.0"
 authors = ["Jake Lang <jak3lang@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+quote = "0.3"
+heck = "0.3.1"
+
+[dependencies.syn]
+version = "0.15.33"
+features = ["full"]
 
 [lib]
 proc-macro = true
