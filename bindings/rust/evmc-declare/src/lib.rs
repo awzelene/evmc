@@ -110,7 +110,6 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // Add all the EVMC fields to the struct definition so we can pass it around FFI.
     let new_struct = instance_redeclare(input);
 
-    // capabilities
     // create
     // destroy
     // execute
@@ -118,6 +117,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     unimplemented!()
 }
 
+/// Takes a capabilities flag and builds the evmc_get_capabilities callback.
 fn build_capabilities_fn(
     name_lowercase: &String,
     type_name: &String,
