@@ -20,8 +20,10 @@ use syn::Field;
 use syn::Fields;
 use syn::FieldsNamed;
 use syn::Ident;
+use syn::IntSuffix;
 use syn::ItemStruct;
 use syn::Lit;
+use syn::LitInt;
 use syn::LitStr;
 use syn::Meta;
 use syn::MetaList;
@@ -49,10 +51,11 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the attribute meta-items for the name and version. Verify param count.
     let meta = parse_macro_input!(args as MetaList);
     assert!(
-        meta.nested.len() == 2,
+        meta.nested.len() == 3,
         "Incorrect number of meta-items passed to evmc_declare_vm."
     );
 
+    //TODO: Reduce code duplication here for accessing meta-args.
     // Extract a name from the first argument.
     let vm_name_stylized = match &meta.nested[0] {
         NestedMeta::Meta(m) => {
@@ -60,7 +63,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
             if let Meta::Word(id) = m {
                 id.to_string()
             } else {
-                panic!("Meta-item passed to evmc_declare_vm is not a valid identifier")
+                panic!("Meta-item passed to evmc_declare_vm is not a valid identifier.")
             }
         }
         NestedMeta::Literal(l) => {
@@ -68,7 +71,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
             if let Lit::Str(s) = l {
                 s.value()
             } else {
-                panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal")
+                panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal.")
             }
         }
     };
@@ -77,7 +80,9 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let vm_version_string = if let NestedMeta::Literal(l) = &meta.nested[1] {
         match l {
             Lit::Str(s) => s.value(),
-            _ => panic!("Argument 2 passed to evmc_declare_vm is not a valid UTF-8 string literal"),
+            _ => {
+                panic!("Argument 2 passed to evmc_declare_vm is not a valid UTF-8 string literal.")
+            }
         }
     } else {
         panic!(
@@ -85,16 +90,53 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         )
     };
 
+    let vm_capabilities = if let NestedMeta::Literal(l) = &meta.nested[2] {
+        match l {
+            Lit::Str(s) => match s.value().as_str() {
+                "evm1" => 0x1u32,
+                "ewasm" => 0x1u32 << 1u32,
+                _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),
+            },
+            _ => {
+                panic!("Argument 3 passed to evmc_declare_vm is not a valid UTF-8 string literal.")
+            }
+        }
+    } else {
+        panic!(
+            "Argument 3 passed to evmc_declare_vm is of incorrect type. Expected a string literal."
+        )
+    };
+
     // Add all the EVMC fields to the struct definition so we can pass it around FFI.
     let new_struct = instance_redeclare(input);
 
-    // struct declaration transformation
     // capabilities
     // create
     // destroy
     // execute
     // TODO: VERSIONS
     unimplemented!()
+}
+
+fn build_capabilities_fn(
+    name_lowercase: &String,
+    type_name: &String,
+    capabilities: u32,
+) -> TokenStream {
+    // Could avoid using a special name and just use get_capabilities.
+    let concatenated = format!("{}_get_capabilities", name_lowercase);
+    let capabilities_fn_ident = Ident::new(&concatenated, name_lowercase.span());
+    let capabilities_literal =
+        LitInt::new(capabilities as u64, IntSuffix::U32, capabilities.span());
+
+    let quoted = quote! {
+        unsafe extern "C" fn #capabilities_fn_ident(instance: *mut ::evmc_sys::evmc_instance) -> ::evmc_sys::evmc_capabilities_flagset {
+            #capabilities_literal
+        }
+    };
+    // Convert to the old-school token stream, since this will be combined with other generated
+    // streams to form a full EVMC impl
+    quoted.into()
 }
 
 /// Generate tokens for the static data associated with an EVMC VM.
