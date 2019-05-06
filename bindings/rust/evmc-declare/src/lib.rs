@@ -22,6 +22,7 @@ use syn::FieldsNamed;
 use syn::Ident;
 use syn::ItemStruct;
 use syn::Lit;
+use syn::LitStr;
 use syn::Meta;
 use syn::MetaList;
 use syn::NestedMeta;
@@ -45,44 +46,43 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         .filter(|c| *c != '_')
         .collect();
 
-    // The stylized VM name can optionally be included as an argument for the attribute. If it is
-    // not provided, the stylized name defaults to the name of the VM struct in title case.
-    let vm_name_stylized: String = if !args.is_empty() {
-        let meta = parse_macro_input!(args as MetaList);
+    // Parse the attribute meta-items for the name and version. Verify param count.
+    let meta = parse_macro_input!(args as MetaList);
+    assert!(
+        meta.nested.len() == 2,
+        "Incorrect number of meta-items passed to evmc_declare_vm."
+    );
 
-        // If we have more than one argument, throw a compile error. Otherwise, extract the item
-        // and try to form a valid stylized name from it.
-        if meta.nested.len() != 1 {
-            panic!("More than one meta-item supplied to evmc_declare_vm")
-        } else {
-            match meta
-                .nested
-                .first()
-                .expect("Meta-item list missing a first element.")
-                .into_value()
-            {
-                NestedMeta::Meta(m) => {
-                    // Try to form a string from the identifier if a meta-item was supplied.
-                    if let Meta::Word(id) = m {
-                        id.to_string()
-                    } else {
-                        panic!("Meta-item passed to evmc_declare_vm is not a valid identifier")
-                    }
-                }
-                NestedMeta::Literal(l) => {
-                    // Try to extract a valid UTF-8 string if a literal was supplied.
-                    if let Lit::Str(s) = l {
-                        s.value()
-                    } else {
-                        panic!(
-                            "Literal passed to evmc_declare_vm is not a valid UTF-8 string literal"
-                        )
-                    }
-                }
+    // Extract a name from the first argument.
+    let vm_name_stylized = match &meta.nested[0] {
+        NestedMeta::Meta(m) => {
+            // Try to form a string from the identifier if a meta-item was supplied.
+            if let Meta::Word(id) = m {
+                id.to_string()
+            } else {
+                panic!("Meta-item passed to evmc_declare_vm is not a valid identifier")
             }
         }
+        NestedMeta::Literal(l) => {
+            // Try to extract a valid UTF-8 string if a literal was supplied.
+            if let Lit::Str(s) = l {
+                s.value()
+            } else {
+                panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal")
+            }
+        }
+    };
+
+    // Extract a version string from the second argument.
+    let vm_version_string = if let NestedMeta::Literal(l) = &meta.nested[1] {
+        match l {
+            Lit::Str(s) => s.value(),
+            _ => panic!("Argument 2 passed to evmc_declare_vm is not a valid UTF-8 string literal"),
+        }
     } else {
-        vm_type_name.to_title_case()
+        panic!(
+            "Argument 2 passed to evmc_declare_vm is of incorrect type. Expected a string literal."
+        )
     };
 
     // Add all the EVMC fields to the struct definition so we can pass it around FFI.
@@ -98,17 +98,25 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Generate tokens for the static data associated with an EVMC VM.
-fn build_static_data(name_stylized: &String, name_allcaps: &String) -> TokenStream {
+fn build_static_data(
+    name_stylized: &String,
+    name_allcaps: &String,
+    version: &String,
+) -> TokenStream {
     // Stitch together the VM name and the suffix _NAME
-    let concatenated = format!("{}_NAME", name_allcaps);
-    let static_name_ident = Ident::new(&concatenated, name_allcaps.span());
+    let concatenated_name = format!("{}_NAME", name_allcaps);
+    let concatenated_version = format!("{}_VERSION", name_allcaps);
+    let static_name_ident = Ident::new(&concatenated_name, name_allcaps.span());
+    let static_version_ident = Ident::new(&concatenated_version, name_allcaps.span());
 
-    // Turn the stylized VM name into a string literal.
+    // Turn the stylized VM name and version into string literals.
     // FIXME: Not sure if the span of name.as_str() is the same as that of name.
     let stylized_name_literal = LitStr::new(name_stylized.as_str(), name_stylized.as_str().span());
+    let version_literal = LitStr::new(version.as_str(), version.as_str().span());
 
     let quoted = quote! {
-        static #static_name_ident = #stylized_name_literal;
+        static #static_name_ident: &'static str = #stylized_name_literal;
+        static #static_version_ident: &'static str = #version_literal;
     };
     // Convert to the old-school token stream, since this will be combined with other generated
     // streams to form a full EVMC impl
