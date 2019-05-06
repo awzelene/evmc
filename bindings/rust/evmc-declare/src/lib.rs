@@ -151,7 +151,7 @@ fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
 
     // Slightly hacky way to auto-apply the repr(C) attr.
     // TODO: figure out if there is any weird behavior when the user specifies repr(C) on their
-    // own.
+    // own. Also, figure out a better way to do this.
     let ret_tokens = quote! {
         #[repr(C)]
         #input
@@ -160,7 +160,7 @@ fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
     parse2(ret_tokens).expect("Failed to re-parse struct item when attaching repr(C) attribute.")
 }
 
-/// Get the fields of evmc_instance in AST form as a punctuated list.
+/// Get the fields of evmc_instance in AST form.
 fn evmc_instance_fields() -> FieldsNamed {
     // FIXME: Make this version independent.
     // Parse the fields of evmc_instance and return them as AST nodes
