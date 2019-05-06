@@ -2,16 +2,16 @@
 
 extern crate proc_macro;
 
-use proc_macro::TokenStream;
 use heck::ShoutySnakeCase;
 use heck::SnakeCase;
 use heck::TitleCase;
+use proc_macro::TokenStream;
 use quote::quote;
 use quote::quote_each_token;
 use quote::ToTokens;
-use syn::parse_macro_input;
 use syn::parse;
 use syn::parse2;
+use syn::parse_macro_input;
 use syn::parse_str;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
@@ -82,7 +82,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         vm_type_name.to_title_case()
     };
-    
+
     // Add all the EVMC fields to the struct definition so we can pass it around FFI.
     let new_struct = instance_redeclare(input);
 
@@ -110,7 +110,7 @@ fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
             }
 
             (*user_fields).named = new_fields;
-        },
+        }
 
         // If the struct is a unit struct, convert to a named struct.
         // TODO: support unit structs
@@ -119,7 +119,7 @@ fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
         // Tuples are not FFI-safe, so panic if encountered.
         Fields::Unnamed(_) => panic!("Tuple structs are not supported as they are not FFI-safe."),
     };
-    
+
     // Slightly hacky way to auto-apply the repr(C) attr.
     // TODO: figure out if there is any weird behavior when the user specifies repr(C) on their
     // own.
