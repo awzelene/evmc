@@ -14,10 +14,12 @@ use syn::parse2;
 use syn::parse_macro_input;
 use syn::parse_str;
 use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
 use syn::token::Comma;
 use syn::Field;
 use syn::Fields;
 use syn::FieldsNamed;
+use syn::Ident;
 use syn::ItemStruct;
 use syn::Lit;
 use syn::Meta;
@@ -91,7 +93,26 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // create
     // destroy
     // execute
+    // TODO: VERSIONS
     unimplemented!()
+}
+
+/// Generate tokens for the static data associated with an EVMC VM.
+fn build_static_data(name_stylized: &String, name_allcaps: &String) -> TokenStream {
+    // Stitch together the VM name and the suffix _NAME
+    let concatenated = format!("{}_NAME", name_allcaps);
+    let static_name_ident = Ident::new(&concatenated, name_allcaps.span());
+
+    // Turn the stylized VM name into a string literal.
+    // FIXME: Not sure if the span of name.as_str() is the same as that of name.
+    let stylized_name_literal = LitStr::new(name_stylized.as_str(), name_stylized.as_str().span());
+
+    let quoted = quote! {
+        static #static_name_ident = #stylized_name_literal;
+    };
+    // Convert to the old-school token stream, since this will be combined with other generated
+    // streams to form a full EVMC impl
+    quoted.into()
 }
 
 /// Take a struct definition and prepend its list of fields with those of ffi::evmc_instance, so
