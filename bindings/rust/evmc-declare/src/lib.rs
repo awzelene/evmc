@@ -1,10 +1,23 @@
+#![recursion_limit = "128"]
+
 extern crate proc_macro;
 
+use proc_macro::TokenStream;
 use heck::ShoutySnakeCase;
 use heck::SnakeCase;
 use heck::TitleCase;
-use proc_macro::TokenStream;
+use quote::quote;
+use quote::quote_each_token;
+use quote::ToTokens;
 use syn::parse_macro_input;
+use syn::parse;
+use syn::parse2;
+use syn::parse_str;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
+use syn::Field;
+use syn::Fields;
+use syn::FieldsNamed;
 use syn::ItemStruct;
 use syn::Lit;
 use syn::Meta;
@@ -69,6 +82,9 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         vm_type_name.to_title_case()
     };
+    
+    // Add all the EVMC fields to the struct definition so we can pass it around FFI.
+    let new_struct = instance_redeclare(input);
 
     // struct declaration transformation
     // capabilities
@@ -76,6 +92,64 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // destroy
     // execute
     unimplemented!()
+}
+
+/// Take a struct definition and prepend its list of fields with those of ffi::evmc_instance, so
+/// that it can be unsafely casted correctly when passed across FFI.
+fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
+    // Extract the fields and determine the "style" of the struct.
+    match input.fields {
+        // If the struct is normal with named fields, prepend the fields list and finish.
+        Fields::Named(ref mut user_fields) => {
+            // Get the required EVMC fields
+            let mut new_fields = evmc_instance_fields().named;
+
+            // Push the user-defined struct fields on top of the EVMC fields.
+            for field in user_fields.named.iter() {
+                new_fields.push(field.clone());
+            }
+
+            (*user_fields).named = new_fields;
+        },
+
+        // If the struct is a unit struct, convert to a named struct.
+        // TODO: support unit structs
+        Fields::Unit => panic!("Unit structs not supported yet."),
+
+        // Tuples are not FFI-safe, so panic if encountered.
+        Fields::Unnamed(_) => panic!("Tuple structs are not supported as they are not FFI-safe."),
+    };
+    
+    // Slightly hacky way to auto-apply the repr(C) attr.
+    // TODO: figure out if there is any weird behavior when the user specifies repr(C) on their
+    // own.
+    let ret_tokens = quote! {
+        #[repr(C)]
+        #input
+    };
+
+    parse2(ret_tokens).expect("Failed to re-parse struct item when attaching repr(C) attribute.")
+}
+
+/// Get the fields of evmc_instance in AST form as a punctuated list.
+fn evmc_instance_fields() -> FieldsNamed {
+    // FIXME: Make this version independent.
+    // Parse the fields of evmc_instance and return them as AST nodes
+    let instance_fields: FieldsNamed = parse_str(
+        "{
+            pub abi_version: ::std::os::raw::c_int,
+            pub name: *const ::std::os::raw::c_char,
+            pub version: *const ::std::os::raw::c_char,
+            pub destroy: ::evmc_sys::evmc_destroy_fn,
+            pub execute: ::evmc_sys::evmc_execute_fn,
+            pub get_capabilities: ::evmc_sys::evmc_get_capabilities_fn,
+            pub set_tracer: ::evmc_sys::evmc_set_tracer_fn,
+            pub pub set_option: ::evmc_sys::evmc_set_option_fn,
+        }",
+    )
+    .expect("Could not parse EVMC instance fields");
+
+    instance_fields
 }
 
 #[cfg(test)]
