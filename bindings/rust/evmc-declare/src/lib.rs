@@ -111,8 +111,6 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         )
     };
 
-    // create
-    // destroy
     // execute
     unimplemented!()
 }
@@ -131,6 +129,8 @@ fn build_create_fn(
     // TODO: reduce code duplication here.
     let capabilities_fn_string = format!("{}_get_capabilities", name_lowercase);
     let capabilities_fn_ident = Ident::new(&capabilities_fn_string, name_lowercase.span());
+    let destroy_fn_string = format!("{}_destroy", name_lowercase);
+    let destroy_fn_ident = Ident::new(&destroy_fn_string, name_lowercase.span());
     let static_name_string = format!("{}_NAME", name_caps);
     let static_version_string = format!("{}_VERSION", name_caps);
     let static_name_ident = Ident::new(&static_name_string, name_caps.span());
@@ -144,7 +144,7 @@ fn build_create_fn(
         extern "C" fn #fn_ident() -> *const ::evmc_sys::evmc_instance {
             let new_instance = ::evmc_sys::evmc_instance {
                 abi_version: ::evmc_sys::EVMC_ABI_VERSION as i32,
-                destroy: Some(/*some destroy fn*/),
+                destroy: Some(#destroy_fn_ident),
                 execute: Some(/*some execution fn*/),
                 get_capabilities: Some(#capabilities_fn_ident),
                 set_option: None,
@@ -157,7 +157,7 @@ fn build_create_fn(
         }
     };
 
-    unimplemented!()
+    quoted.into()
 }
 
 /// Builds a callback to dispose of the VM instance
