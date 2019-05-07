@@ -90,6 +90,10 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         )
     };
 
+    // Extract the capabilities string from the third argument and convert it to the appropriate
+    // flag.
+    // NOTE: We use the strings because attribute parameters cannot be integer literals and a meta-item cannot be used to
+    // describe a version number.
     let vm_capabilities = if let NestedMeta::Literal(l) = &meta.nested[2] {
         match l {
             Lit::Str(s) => match s.value().as_str() {
@@ -113,7 +117,6 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // create
     // destroy
     // execute
-    // TODO: VERSIONS
     unimplemented!()
 }
 
