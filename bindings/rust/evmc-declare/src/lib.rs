@@ -133,11 +133,11 @@ fn build_create_fn(
 
     // TODO: reduce code duplication here.
     let capabilities_fn_string = format!("{}_get_capabilities", name_lowercase);
-    let capabilities_fn_ident = Ident::new(&capabilities_fn_string, capabilities_fn_string.span());
+    let capabilities_fn_ident = Ident::new(&capabilities_fn_string, name_lowercase.span());
     let static_name_string = format!("{}_NAME", name_caps);
     let static_version_string = format!("{}_VERSION", name_caps);
-    let static_name_ident = Ident::new(&static_name_string, static_name_string.span());
-    let static_version_ident = Ident::new(&static_version_string, static_version_string.span());
+    let static_name_ident = Ident::new(&static_name_string, name_caps.span());
+    let static_version_ident = Ident::new(&static_version_string, name_caps.span());
 
     // TODO: set_option
     // TODO: tracer fn?
@@ -145,7 +145,7 @@ fn build_create_fn(
     let quoted = quote! {
         #[no_mangle]
         extern "C" fn #fn_ident() -> *const ffi::evmc_instance {
-            let ret = #type_name {
+            let ret = #type_ident {
                 abi_version: ::evmc_sys::EVMC_ABI_VERSION as i32,
                 destroy: Some(/*some destroy fn*/),
                 execute: Some(/*some execution fn*/),
@@ -160,6 +160,20 @@ fn build_create_fn(
         }
     };
 
+    unimplemented!()
+}
+
+/// Builds a callback to dispose of the VM instance
+fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> TokenStream {
+    let fn_ident_string = format!("{}_destroy", name_lowercase);
+    let fn_ident = Ident::new(&fn_ident_string, name_lowercase.span());
+    let type_ident = Ident::new(type_name, type_name.span());
+
+    let quoted = quote! {
+        extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
+            // TODO
+        }
+    };
     unimplemented!()
 }
 
