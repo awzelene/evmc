@@ -9,6 +9,11 @@ pub use evmc_sys as ffi;
 // TODO: Add convenient helpers for evmc_execute
 // TODO: Add a derive macro here for creating evmc_create
 
+pub trait EvmcVm {
+    fn init() -> Self;
+    fn execute(&self, code: &[u8], context: &ExecutionContext) -> ExecutionResult;
+}
+
 /// EVMC result structure.
 pub struct ExecutionResult {
     status_code: ffi::evmc_status_code,

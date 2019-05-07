@@ -6,3 +6,5 @@ edition = "2018"
 
 [dependencies]
 evmc-declare = { path = "../evmc-declare" }
+evmc-sys = { path = "../evmc-sys" }
+evmc-vm = { path = "../evmc-vm" }

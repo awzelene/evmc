@@ -156,7 +156,7 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 
             container.into_ffi_pointer();
 
-            result
+            result.into()
         }
     }
 }
