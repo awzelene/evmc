@@ -49,33 +49,34 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let vm_name_stylized = match &meta.nested[0] {
         NestedMeta::Meta(m) => {
             // Try to form a string from the identifier if a meta-item was supplied.
-            if let Meta::Word(id) = m {
-                id.to_string()
+            if let Meta::NameValue(pair) = m {
+                assert!(pair.ident.to_string() == "name".to_string(), "Expected 'name = \"foo\"'");
+                match pair.lit {
+                    Lit::Str(ref s) => s.value(),
+                    _ => panic!("Argument 1 is not a valid string literal."),
+                }
             } else {
-                panic!("Meta-item passed to evmc_declare_vm is not a valid identifier.")
+                panic!("Argument 1 passed to evmc_declare_vm is not a name-value item.")
             }
         }
-        NestedMeta::Literal(l) => {
-            // Try to extract a valid UTF-8 string if a literal was supplied.
-            if let Lit::Str(s) = l {
-                s.value()
-            } else {
-                panic!("Literal passed to evmc_declare_vm is not a valid UTF-8 string literal.")
-            }
-        }
+        _ => panic!("Argument 1 passed to evmc_declare_vm is of incorrect type. Expected a name-value item.")
     };
 
     // Extract a version string from the second argument.
-    let vm_version_string = if let NestedMeta::Literal(l) = &meta.nested[1] {
-        match l {
-            Lit::Str(s) => s.value(),
-            _ => {
-                panic!("Argument 2 passed to evmc_declare_vm is not a valid UTF-8 string literal.")
-            }
+    let vm_version_string = if let NestedMeta::Meta(m) = &meta.nested[1] {
+        match m {
+            Meta::NameValue(pair) => {
+                assert!(pair.ident.to_string() == "version".to_string(), "Expected 'version = \"foo\"'");
+                match pair.lit {
+                    Lit::Str(ref s) => s.value(),
+                    _ => panic!("Argument 2 is not a valid string literal."),
+                }
+            },
+            _ => panic!("Argument 2 passed to evmc_declare_vm is not a name-value item."),
         }
     } else {
         panic!(
-            "Argument 2 passed to evmc_declare_vm is of incorrect type. Expected a string literal."
+            "Argument 2 passed to evmc_declare_vm is of incorrect type. Expected a name-value item."
         )
     };
 
@@ -83,20 +84,27 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // flag.
     // NOTE: We use the strings because attribute parameters cannot be integer literals and a meta-item cannot be used to
     // describe a version number.
-    let vm_capabilities = if let NestedMeta::Literal(l) = &meta.nested[2] {
-        match l {
-            Lit::Str(s) => match s.value().as_str() {
-                "evm1" => 0x1u32,
-                "ewasm" => 0x1u32 << 1u32,
-                _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),
+    let vm_capabilities = if let NestedMeta::Meta(m) = &meta.nested[2] {
+        match m {
+            Meta::NameValue(pair) => {
+                // TODO: support multiple capabilities
+                assert!(pair.ident.to_string() == "capabilities".to_string(), "Expected 'capabilities = \"evm1 | ewasm\"'");
+                match pair.lit {
+                    Lit::Str(ref s) => match s.value().as_str() {
+                        "evm1" => 0x1u32,
+                        "ewasm" => 0x1u32 << 1u32,
+                        _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),
+                    },
+                    _ => panic!("Argument 3 is not a valid string literal."),
+                }
             },
             _ => {
-                panic!("Argument 3 passed to evmc_declare_vm is not a valid UTF-8 string literal.")
+                panic!("Argument 3 passed to evmc_declare_vm is not a name-value item.")
             }
         }
     } else {
         panic!(
-            "Argument 3 passed to evmc_declare_vm is of incorrect type. Expected a string literal."
+            "Argument 3 passed to evmc_declare_vm is of incorrect type. Expected a name-value item."
         )
     };
 
