@@ -111,17 +111,36 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         )
     };
 
+    // Get all the tokens from the respective helpers.
+    let static_data_tokens =
+        build_static_data(&vm_name_stylized, &vm_name_allcaps, &vm_version_string);
+    let container_tokens = build_vm_container();
+    let capabilities_tokens =
+        build_capabilities_fn(&vm_name_lowercase, &vm_type_name, vm_capabilities);
+    let create_tokens = build_create_fn(&vm_name_lowercase, &vm_name_allcaps, &vm_type_name);
+    let destroy_tokens = build_destroy_fn(&vm_name_lowercase, &vm_type_name);
+
     // execute
+    // TODO: remove intermediate step where old-school token streams are returned by the helpers.
     unimplemented!()
 }
 
+fn build_execute_fn(name_lowercase: &String, type_name: &String) -> TokenStream {
+    let fn_name_string = format!("{}_execute", name_lowercase);
+    let fn_name_ident = Ident::new(&fn_name_string, name_lowercase.span());
+    let type_name_ident = Ident::new(type_name, type_name.span());
+
+    let quoted = quote! {
+        extern "C" fn #fn_name_ident(instance: *mut ::evmc_sys::evmc_instance, context: *mut ::evmc_sys::evmc_context, rev: ::evmc_sys::evmc_revision, msg: *const ::evmc_sys::evmc_message, code: *const u8, code_size: usize) -> ::evmc_sys::evmc_result {
+            let execution_context = ::evmc_vm::ExecutionContext::new(msg.as_ref().expect("EVMC message is null"), context.as_mut().expect("EVMC context is null"));
+        }
+    };
+
+    quoted.into()
+}
+
 /// Takes an identifier and struct definition, builds an evmc_create_* function for FFI.
-fn build_create_fn(
-    name_lowercase: &String,
-    name_caps: &String,
-    type_name: &String,
-    vm_definition: &ItemStruct,
-) -> TokenStream {
+fn build_create_fn(name_lowercase: &String, name_caps: &String, type_name: &String) -> TokenStream {
     let fn_name = format!("evmc_create_{}", name_lowercase);
     let fn_ident = Ident::new(&fn_name, name_lowercase.span());
     let type_ident = Ident::new(type_name, type_name.span());
@@ -153,7 +172,7 @@ fn build_create_fn(
                 version: ::std::ffi::CString::new(#static_version_ident).expect("Failed to build VM version string").into_raw() as *const i8,
             };
 
-            __EvmcContainer::new(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
+            __EvmcContainer::new::<#type_ident>(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
         }
     };
 
@@ -168,7 +187,7 @@ fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> TokenStream 
 
     let quoted = quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
-            Box::new(__EvmcContainer<#type_ident>::from_ffi_pointer(instance));
+            Box::new(__EvmcContainer::from_ffi_pointer::<#type_ident>(instance));
         }
     };
 
@@ -225,6 +244,7 @@ fn build_static_data(
 
 /// Generates a definition and impl for a struct which contains the EVMC instance needed by FFI,
 /// and the user-defined VM.
+// TODO: Move this struct and impl into evmc_vm.
 fn build_vm_container() -> TokenStream {
     let quoted = quote! {
         struct __EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
