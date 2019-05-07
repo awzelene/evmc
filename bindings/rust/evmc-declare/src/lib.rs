@@ -120,6 +120,49 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     unimplemented!()
 }
 
+/// Takes an identifier and struct definition, builds an evmc_create_* function for FFI.
+fn build_create_fn(
+    name_lowercase: &String,
+    name_caps: &String,
+    type_name: &String,
+    vm_definition: &ItemStruct,
+) -> TokenStream {
+    let fn_name = format!("evmc_create_{}", name_lowercase);
+    let fn_ident = Ident::new(&fn_name, name_lowercase.span());
+    let type_ident = Ident::new(type_name, type_name.span());
+
+    // TODO: reduce code duplication here.
+    let capabilities_fn_string = format!("{}_get_capabilities", name_lowercase);
+    let capabilities_fn_ident = Ident::new(&capabilities_fn_string, capabilities_fn_string.span());
+    let static_name_string = format!("{}_NAME", name_caps);
+    let static_version_string = format!("{}_VERSION", name_caps);
+    let static_name_ident = Ident::new(&static_name_string, static_name_string.span());
+    let static_version_ident = Ident::new(&static_version_string, static_version_string.span());
+
+    // TODO: set_option
+    // TODO: tracer fn?
+    // TODO: auto-initialize user defined params with default trait
+    let quoted = quote! {
+        #[no_mangle]
+        extern "C" fn #fn_ident() -> *const ffi::evmc_instance {
+            let ret = #type_name {
+                abi_version: ::evmc_sys::EVMC_ABI_VERSION as i32,
+                destroy: Some(/*some destroy fn*/),
+                execute: Some(/*some execution fn*/),
+                get_capabilities: Some(#capabilities_fn_ident),
+                set_option: None,
+                set_tracer: None,
+                name: ::std::ffi::CString::new(#static_name_ident).expect("Failed to build VM name string").into_raw() as *const i8,
+                version: ::std::ffi::CString::new(#static_version_ident).expect("Failed to build VM version string").into_raw() as *const i8,
+                // user-defined fields go here. still deciding whether we should rely on the fields
+                // to implement Default, or do some massive hacky fuckery
+            }
+        }
+    };
+
+    unimplemented!()
+}
+
 /// Takes a capabilities flag and builds the evmc_get_capabilities callback.
 fn build_capabilities_fn(
     name_lowercase: &String,
@@ -157,7 +200,7 @@ fn build_static_data(
     // Turn the stylized VM name and version into string literals.
     // FIXME: Not sure if the span of name.as_str() is the same as that of name.
     let stylized_name_literal = LitStr::new(name_stylized.as_str(), name_stylized.as_str().span());
-    let version_literal = LitStr::new(version.as_str(), version.as_str().span());
+    let version_literal = LitStr::new(version, version.span());
 
     let quoted = quote! {
         static #static_name_ident: &'static str = #stylized_name_literal;
