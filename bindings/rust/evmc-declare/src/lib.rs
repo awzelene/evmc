@@ -131,7 +131,15 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> TokenStream 
     let type_name_ident = Ident::new(type_name, type_name.span());
 
     let quoted = quote! {
-        extern "C" fn #fn_name_ident(instance: *mut ::evmc_sys::evmc_instance, context: *mut ::evmc_sys::evmc_context, rev: ::evmc_sys::evmc_revision, msg: *const ::evmc_sys::evmc_message, code: *const u8, code_size: usize) -> ::evmc_sys::evmc_result {
+        extern "C" fn #fn_name_ident(
+            instance: *mut ::evmc_sys::evmc_instance,
+            context: *mut ::evmc_sys::evmc_context,
+            rev: ::evmc_sys::evmc_revision,
+            msg: *const ::evmc_sys::evmc_message,
+            code: *const u8,
+            code_size: usize
+        ) -> ::evmc_sys::evmc_result
+        {
             let execution_context = ::evmc_vm::ExecutionContext::new(msg.as_ref().expect("EVMC message is null"), context.as_mut().expect("EVMC context is null"));
         }
     };
