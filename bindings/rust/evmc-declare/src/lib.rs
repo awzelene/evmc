@@ -261,7 +261,7 @@ fn evmc_instance_fields() -> FieldsNamed {
             pub execute: ::evmc_sys::evmc_execute_fn,
             pub get_capabilities: ::evmc_sys::evmc_get_capabilities_fn,
             pub set_tracer: ::evmc_sys::evmc_set_tracer_fn,
-            pub pub set_option: ::evmc_sys::evmc_set_option_fn,
+            pub set_option: ::evmc_sys::evmc_set_option_fn,
         }",
     )
     .expect("Could not parse EVMC instance fields");
