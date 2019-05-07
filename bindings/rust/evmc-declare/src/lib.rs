@@ -111,9 +111,6 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
         )
     };
 
-    // Add all the EVMC fields to the struct definition so we can pass it around FFI.
-    let new_struct = instance_redeclare(input);
-
     // create
     // destroy
     // execute
