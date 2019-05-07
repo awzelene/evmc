@@ -40,73 +40,34 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // Parse the attribute meta-items for the name and version. Verify param count.
     let meta = parse_macro_input!(args as MetaList);
     assert!(
-        meta.nested.len() == 3,
+        meta.nested.len() == 1,
         "Incorrect number of meta-items passed to evmc_declare_vm."
     );
 
-    //TODO: Reduce code duplication here for accessing meta-args.
-    // Extract a name from the first argument.
-    let vm_name_stylized = match &meta.nested[0] {
+    // Extract the name and capabilities from the attribute's key-value item.
+    let (vm_name_stylized, vm_capabilities) = match &meta.nested[0] {
         NestedMeta::Meta(m) => {
             // Try to form a string from the identifier if a meta-item was supplied.
             if let Meta::NameValue(pair) = m {
-                assert!(pair.ident.to_string() == "name".to_string(), "Expected 'name = \"foo\"'");
-                match pair.lit {
-                    Lit::Str(ref s) => s.value(),
-                    _ => panic!("Argument 1 is not a valid string literal."),
-                }
-            } else {
-                panic!("Argument 1 passed to evmc_declare_vm is not a name-value item.")
-            }
-        }
-        _ => panic!("Argument 1 passed to evmc_declare_vm is of incorrect type. Expected a name-value item.")
-    };
-
-    // Extract a version string from the second argument.
-    let vm_version_string = if let NestedMeta::Meta(m) = &meta.nested[1] {
-        match m {
-            Meta::NameValue(pair) => {
-                assert!(pair.ident.to_string() == "version".to_string(), "Expected 'version = \"foo\"'");
-                match pair.lit {
-                    Lit::Str(ref s) => s.value(),
-                    _ => panic!("Argument 2 is not a valid string literal."),
-                }
-            },
-            _ => panic!("Argument 2 passed to evmc_declare_vm is not a name-value item."),
-        }
-    } else {
-        panic!(
-            "Argument 2 passed to evmc_declare_vm is of incorrect type. Expected a name-value item."
-        )
-    };
-
-    // Extract the capabilities string from the third argument and convert it to the appropriate
-    // flag.
-    // NOTE: We use the strings because attribute parameters cannot be integer literals and a meta-item cannot be used to
-    // describe a version number.
-    let vm_capabilities = if let NestedMeta::Meta(m) = &meta.nested[2] {
-        match m {
-            Meta::NameValue(pair) => {
-                // TODO: support multiple capabilities
-                assert!(pair.ident.to_string() == "capabilities".to_string(), "Expected 'capabilities = \"evm1 | ewasm\"'");
-                match pair.lit {
+                let name = pair.ident.to_string();
+                let capabilities = match pair.lit {
                     Lit::Str(ref s) => match s.value().as_str() {
                         "evm1" => 0x1u32,
                         "ewasm" => 0x1u32 << 1u32,
-                        _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),
+                        _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),                       
                     },
-                    _ => panic!("Argument 3 is not a valid string literal."),
-                }
-            },
-            _ => {
-                panic!("Argument 3 passed to evmc_declare_vm is not a name-value item.")
+                    _ => panic!("Argument 1 is not a valid string literal."),
+                };
+                (name, capabilities)
+            } else {
+                panic!("Argument passed to evmc_declare_vm is not a name-value item.")
             }
         }
-    } else {
-        panic!(
-            "Argument 3 passed to evmc_declare_vm is of incorrect type. Expected a name-value item."
-        )
+        _ => panic!("Argument passed to evmc_declare_vm is of incorrect type. Expected a name-value item.")
     };
+    
+    // Get the VM version from the crate version.
+    let vm_version_string = env!("CARGO_PKG_VERSION").to_string();
 
     // Get all the tokens from the respective helpers.
     let static_data_tokens =
