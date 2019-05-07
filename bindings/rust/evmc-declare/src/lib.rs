@@ -4,21 +4,10 @@ extern crate proc_macro;
 
 use heck::ShoutySnakeCase;
 use heck::SnakeCase;
-use heck::TitleCase;
 use proc_macro::TokenStream;
 use quote::quote;
-use quote::quote_each_token;
-use quote::ToTokens;
-use syn::parse;
-use syn::parse2;
 use syn::parse_macro_input;
-use syn::parse_str;
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::Comma;
-use syn::Field;
-use syn::Fields;
-use syn::FieldsNamed;
 use syn::Ident;
 use syn::IntSuffix;
 use syn::ItemStruct;
@@ -115,22 +104,29 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let static_data_tokens =
         build_static_data(&vm_name_stylized, &vm_name_allcaps, &vm_version_string);
     let container_tokens = build_vm_container();
-    let capabilities_tokens =
-        build_capabilities_fn(&vm_name_lowercase, &vm_type_name, vm_capabilities);
+    let capabilities_tokens = build_capabilities_fn(&vm_name_lowercase, vm_capabilities);
     let create_tokens = build_create_fn(&vm_name_lowercase, &vm_name_allcaps, &vm_type_name);
     let destroy_tokens = build_destroy_fn(&vm_name_lowercase, &vm_type_name);
+    let execute_tokens = build_execute_fn(&vm_name_lowercase, &vm_type_name);
 
-    // execute
-    // TODO: remove intermediate step where old-school token streams are returned by the helpers.
-    unimplemented!()
+    let quoted = quote! {
+        #static_data_tokens
+        #container_tokens
+        #capabilities_tokens
+        #create_tokens
+        #destroy_tokens
+        #execute_tokens
+    };
+
+    quoted.into()
 }
 
-fn build_execute_fn(name_lowercase: &String, type_name: &String) -> TokenStream {
+fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2::TokenStream {
     let fn_name_string = format!("{}_execute", name_lowercase);
     let fn_name_ident = Ident::new(&fn_name_string, name_lowercase.span());
     let type_name_ident = Ident::new(type_name, type_name.span());
 
-    let quoted = quote! {
+    quote! {
         extern "C" fn #fn_name_ident(
             instance: *mut ::evmc_sys::evmc_instance,
             context: *mut ::evmc_sys::evmc_context,
@@ -140,15 +136,37 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> TokenStream 
             code_size: usize
         ) -> ::evmc_sys::evmc_result
         {
-            let execution_context = ::evmc_vm::ExecutionContext::new(msg.as_ref().expect("EVMC message is null"), context.as_mut().expect("EVMC context is null"));
-        }
-    };
+            assert!(!msg.is_null());
+            assert!(!context.is_null());
+            assert!(!instance.is_null());
+            assert!(!code.is_null());
 
-    quoted.into()
+            let execution_context = ::evmc_vm::ExecutionContext::new(
+                msg.as_ref().expect("EVMC message is null"),
+                context.as_mut().expect("EVMC context is null")
+            );
+
+            let code_ref: &[u8] = unsafe {
+                ::std::slice::from_raw_parts(code, code_size);
+            }
+
+            let container = __EvmcContainer::from_ffi_pointer::<#type_name_ident>(instance);
+
+            let result = container.execute(code_ref, &execution_context);
+
+            container.into_ffi_pointer();
+
+            result
+        }
+    }
 }
 
 /// Takes an identifier and struct definition, builds an evmc_create_* function for FFI.
-fn build_create_fn(name_lowercase: &String, name_caps: &String, type_name: &String) -> TokenStream {
+fn build_create_fn(
+    name_lowercase: &String,
+    name_caps: &String,
+    type_name: &String,
+) -> proc_macro2::TokenStream {
     let fn_name = format!("evmc_create_{}", name_lowercase);
     let fn_ident = Ident::new(&fn_name, name_lowercase.span());
     let type_ident = Ident::new(type_name, type_name.span());
@@ -162,17 +180,16 @@ fn build_create_fn(name_lowercase: &String, name_caps: &String, type_name: &Stri
     let static_version_string = format!("{}_VERSION", name_caps);
     let static_name_ident = Ident::new(&static_name_string, name_caps.span());
     let static_version_ident = Ident::new(&static_version_string, name_caps.span());
+    let execute_fn_string = format!("{}_execute", name_lowercase);
+    let execute_fn_ident = Ident::new(&execute_fn_string, name_lowercase.span());
 
-    // TODO: set_option
-    // TODO: tracer fn?
-    // TODO: auto-initialize user defined params with default trait
-    let quoted = quote! {
+    quote! {
         #[no_mangle]
         extern "C" fn #fn_ident() -> *const ::evmc_sys::evmc_instance {
             let new_instance = ::evmc_sys::evmc_instance {
                 abi_version: ::evmc_sys::EVMC_ABI_VERSION as i32,
                 destroy: Some(#destroy_fn_ident),
-                execute: Some(/*some execution fn*/),
+                execute: Some(#execute_fn_ident),
                 get_capabilities: Some(#capabilities_fn_ident),
                 set_option: None,
                 set_tracer: None,
@@ -182,46 +199,35 @@ fn build_create_fn(name_lowercase: &String, name_caps: &String, type_name: &Stri
 
             __EvmcContainer::new::<#type_ident>(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
         }
-    };
-
-    quoted.into()
+    }
 }
 
 /// Builds a callback to dispose of the VM instance
-fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> TokenStream {
+fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> proc_macro2::TokenStream {
     let fn_ident_string = format!("{}_destroy", name_lowercase);
     let fn_ident = Ident::new(&fn_ident_string, name_lowercase.span());
     let type_ident = Ident::new(type_name, type_name.span());
 
-    let quoted = quote! {
+    quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
             Box::new(__EvmcContainer::from_ffi_pointer::<#type_ident>(instance));
         }
-    };
-
-    quoted.into()
+    }
 }
 
 /// Takes a capabilities flag and builds the evmc_get_capabilities callback.
-fn build_capabilities_fn(
-    name_lowercase: &String,
-    type_name: &String,
-    capabilities: u32,
-) -> TokenStream {
+fn build_capabilities_fn(name_lowercase: &String, capabilities: u32) -> proc_macro2::TokenStream {
     // Could avoid using a special name and just use get_capabilities.
     let concatenated = format!("{}_get_capabilities", name_lowercase);
     let capabilities_fn_ident = Ident::new(&concatenated, name_lowercase.span());
     let capabilities_literal =
         LitInt::new(capabilities as u64, IntSuffix::U32, capabilities.span());
 
-    let quoted = quote! {
+    quote! {
         unsafe extern "C" fn #capabilities_fn_ident(instance: *mut ::evmc_sys::evmc_instance) -> ::evmc_sys::evmc_capabilities_flagset {
             #capabilities_literal
         }
-    };
-    // Convert to the old-school token stream, since this will be combined with other generated
-    // streams to form a full EVMC impl
-    quoted.into()
+    }
 }
 
 /// Generate tokens for the static data associated with an EVMC VM.
@@ -229,7 +235,7 @@ fn build_static_data(
     name_stylized: &String,
     name_allcaps: &String,
     version: &String,
-) -> TokenStream {
+) -> proc_macro2::TokenStream {
     // Stitch together the VM name and the suffix _NAME
     let concatenated_name = format!("{}_NAME", name_allcaps);
     let concatenated_version = format!("{}_VERSION", name_allcaps);
@@ -241,20 +247,17 @@ fn build_static_data(
     let stylized_name_literal = LitStr::new(name_stylized.as_str(), name_stylized.as_str().span());
     let version_literal = LitStr::new(version, version.span());
 
-    let quoted = quote! {
+    quote! {
         static #static_name_ident: &'static str = #stylized_name_literal;
         static #static_version_ident: &'static str = #version_literal;
-    };
-    // Convert to the old-school token stream, since this will be combined with other generated
-    // streams to form a full EVMC impl
-    quoted.into()
+    }
 }
 
 /// Generates a definition and impl for a struct which contains the EVMC instance needed by FFI,
 /// and the user-defined VM.
 // TODO: Move this struct and impl into evmc_vm.
-fn build_vm_container() -> TokenStream {
-    let quoted = quote! {
+fn build_vm_container() -> proc_macro2::TokenStream {
+    quote! {
         struct __EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
             instance: ::evmc_sys::evmc_instance,
             vm: T,
@@ -286,9 +289,7 @@ fn build_vm_container() -> TokenStream {
                 self.vm.execute(code, context)
             }
         }
-    };
-
-    quoted.into()
+    }
 }
 
 #[cfg(test)]
