@@ -185,7 +185,7 @@ fn instance_redeclare(mut input: ItemStruct) -> ItemStruct {
 
         // If the struct is a unit struct, convert to a named struct.
         // TODO: support unit structs
-        Fields::Unit => panic!("Unit structs not supported yet."),
+        Fields::Unit => panic!("Unit structs are not supported yet."),
 
         // Tuples are not FFI-safe, so panic if encountered.
         Fields::Unnamed(_) => panic!("Tuple structs are not supported as they are not FFI-safe."),
