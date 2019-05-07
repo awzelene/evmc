@@ -4,7 +4,7 @@ use evmc_vm::ExecutionContext;
 #[macro_use]
 use evmc_declare::evmc_declare_vm;
 
-#[evmc_declare_vm("FOO VM", "0.1.0", "ewasm")]
+#[evmc_declare_vm(FooVm = "ewasm")]
 pub struct FooVM {
     a: i32,
 }
