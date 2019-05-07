@@ -110,6 +110,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let execute_tokens = build_execute_fn(&vm_name_lowercase, &vm_type_name);
 
     let quoted = quote! {
+        #input
         #static_data_tokens
         #container_tokens
         #capabilities_tokens
