@@ -141,8 +141,8 @@ fn build_create_fn(
     // TODO: auto-initialize user defined params with default trait
     let quoted = quote! {
         #[no_mangle]
-        extern "C" fn #fn_ident() -> *const ffi::evmc_instance {
-            let ret = #type_ident {
+        extern "C" fn #fn_ident() -> *const ::evmc_sys::evmc_instance {
+            let new_instance = ::evmc_sys::evmc_instance {
                 abi_version: ::evmc_sys::EVMC_ABI_VERSION as i32,
                 destroy: Some(/*some destroy fn*/),
                 execute: Some(/*some execution fn*/),
@@ -151,9 +151,9 @@ fn build_create_fn(
                 set_tracer: None,
                 name: ::std::ffi::CString::new(#static_name_ident).expect("Failed to build VM name string").into_raw() as *const i8,
                 version: ::std::ffi::CString::new(#static_version_ident).expect("Failed to build VM version string").into_raw() as *const i8,
-                // user-defined fields go here. still deciding whether we should rely on the fields
-                // to implement Default, or do some massive hacky fuckery
-            }
+            };
+
+            __EvmcContainer::new(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
         }
     };
 
@@ -168,10 +168,11 @@ fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> TokenStream 
 
     let quoted = quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
-            // TODO
+            Box::new(__EvmcContainer<#type_ident>::from_ffi_pointer(instance));
         }
     };
-    unimplemented!()
+
+    quoted.into()
 }
 
 /// Takes a capabilities flag and builds the evmc_get_capabilities callback.
@@ -219,6 +220,46 @@ fn build_static_data(
     };
     // Convert to the old-school token stream, since this will be combined with other generated
     // streams to form a full EVMC impl
+    quoted.into()
+}
+
+/// Generates a definition and impl for a struct which contains the EVMC instance needed by FFI,
+/// and the user-defined VM.
+fn build_vm_container() -> TokenStream {
+    let quoted = quote! {
+        struct __EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
+            instance: ::evmc_sys::evmc_instance,
+            vm: T,
+        }
+
+        impl<T: ::evmc_vm::EvmcVm + Sized>  __EvmcContainer<T> {
+            pub fn new(_instance: ::evmc_sys::evmc_instance) -> Self {
+                T {
+                    instance: _instance,
+                    vm: T::init(),
+                }
+            }
+
+            pub unsafe fn from_ffi_pointer(instance: *mut ::evmc_sys::evmc_instance) -> Self {
+                if let Some(container) = (instance as *mut __EvmcContainer).as_ref() {
+                    let ret = container.clone();
+                    Box::from_raw(instance);
+                    ret
+                } else {
+                    panic!("instance is null");
+                }
+            }
+
+            pub unsafe fn into_ffi_pointer(mut self) -> *mut ::evmc_sys::evmc_instance {
+                Box::into_raw(Box::new(self)) as *mut ::evmc_sys::evmc_instance
+            }
+
+            pub fn execute(&self, code: &[u8], context: &::evmc_vm::ExecutionContext) -> ::evmc_vm::ExecutionResult {
+                self.vm.execute(code, context)
+            }
+        }
+    };
+
     quoted.into()
 }
 
