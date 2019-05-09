@@ -120,7 +120,7 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
                 ::std::slice::from_raw_parts(code, code_size);
             }
 
-            let container = __EvmcContainer::from_ffi_pointer::<#type_name_ident>(instance);
+            let container = EvmcContainer::from_ffi_pointer::<#type_name_ident>(instance);
 
             let result = container.execute(code_ref, &execution_context);
 
@@ -167,7 +167,7 @@ fn build_create_fn(
                 version: ::std::ffi::CString::new(#static_version_ident).expect("Failed to build VM version string").into_raw() as *const i8,
             };
 
-            __EvmcContainer::new::<#type_ident>(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
+            EvmcContainer::new::<#type_ident>(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
         }
     }
 }
@@ -180,7 +180,7 @@ fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 
     quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
-            Box::new(__EvmcContainer::from_ffi_pointer::<#type_ident>(instance));
+            Box::new(EvmcContainer::from_ffi_pointer::<#type_ident>(instance));
         }
     }
 }
@@ -228,12 +228,12 @@ fn build_static_data(
 // TODO: Move this struct and impl into evmc_vm.
 fn build_vm_container() -> proc_macro2::TokenStream {
     quote! {
-        struct __EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
+        struct EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
             instance: ::evmc_sys::evmc_instance,
             vm: T,
         }
 
-        impl<T: ::evmc_vm::EvmcVm + Sized>  __EvmcContainer<T> {
+        impl<T: ::evmc_vm::EvmcVm + Sized>  EvmcContainer<T> {
             pub fn new(_instance: ::evmc_sys::evmc_instance) -> Self {
                 T {
                     instance: _instance,
@@ -242,7 +242,7 @@ fn build_vm_container() -> proc_macro2::TokenStream {
             }
 
             pub unsafe fn from_ffi_pointer(instance: *mut ::evmc_sys::evmc_instance) -> Self {
-                if let Some(container) = (instance as *mut __EvmcContainer).as_ref() {
+                if let Some(container) = (instance as *mut EvmcContainer).as_ref() {
                     let ret = container.clone();
                     Box::from_raw(instance);
                     ret
