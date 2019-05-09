@@ -17,6 +17,20 @@ jobs:
         command: |
           codespell --quiet-level=4 --ignore-words=./.codespell-whitelist
 
+  bumpversion:
+    docker:
+    docker:
+    - image: ethereum/cpp-build-env:10
+    steps:
+    - checkout
+    - run:
+        name: "Check bumpversion"
+        command: |
+          pip3 install bumpversion
+          bumpversion --dry-run --verbose major
+          bumpversion --dry-run --verbose minor
+          bumpversion --dry-run --verbose patch
+
   build: &build
     docker:
       - image: ethereum/cpp-build-env:10
@@ -177,6 +191,7 @@ workflows:
   evmc:
     jobs:
       - lint
+      - bumpversion
       - build-cxx17
       - build-cxx14-asan
       - build-gcc6
