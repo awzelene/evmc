@@ -6,6 +6,9 @@
 pub extern crate evmc_sys;
 pub use evmc_sys as ffi;
 
+mod container;
+pub use container::EvmcContainer;
+
 // TODO: Add convenient helpers for evmc_execute
 // TODO: Add a derive macro here for creating evmc_create
 

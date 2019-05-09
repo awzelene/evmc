@@ -54,7 +54,7 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
                     Lit::Str(ref s) => match s.value().as_str() {
                         "evm1" => 0x1u32,
                         "ewasm" => 0x1u32 << 1u32,
-                        _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),                       
+                        _ => panic!("Invalid capabilities specifier. Use 'evm1' or 'ewasm'."),
                     },
                     _ => panic!("Argument 1 is not a valid string literal."),
                 };
@@ -63,16 +63,17 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
                 panic!("Argument passed to evmc_declare_vm is not a name-value item.")
             }
         }
-        _ => panic!("Argument passed to evmc_declare_vm is of incorrect type. Expected a name-value item.")
+        _ => panic!(
+            "Argument passed to evmc_declare_vm is of incorrect type. Expected a name-value item."
+        ),
     };
-    
+
     // Get the VM version from the crate version.
     let vm_version_string = env!("CARGO_PKG_VERSION").to_string();
 
     // Get all the tokens from the respective helpers.
     let static_data_tokens =
         build_static_data(&vm_name_stylized, &vm_name_allcaps, &vm_version_string);
-    let container_tokens = build_vm_container();
     let capabilities_tokens = build_capabilities_fn(&vm_name_lowercase, vm_capabilities);
     let create_tokens = build_create_fn(&vm_name_lowercase, &vm_name_allcaps, &vm_type_name);
     let destroy_tokens = build_destroy_fn(&vm_name_lowercase, &vm_type_name);
@@ -81,7 +82,6 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let quoted = quote! {
         #input
         #static_data_tokens
-        #container_tokens
         #capabilities_tokens
         #create_tokens
         #destroy_tokens
@@ -124,7 +124,7 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 
             let result = container.execute(code_ref, &execution_context);
 
-            container.into_ffi_pointer();
+            EvmcContainer::into_ffi_pointer(container);
 
             result.into()
         }
@@ -167,7 +167,7 @@ fn build_create_fn(
                 version: ::std::ffi::CString::new(#static_version_ident).expect("Failed to build VM version string").into_raw() as *const i8,
             };
 
-            EvmcContainer::new::<#type_ident>(new_instance).into_ffi_pointer() as *const ::evmc_sys::evmc_instance
+            EvmcContainer::into_ffi_pointer(Box::new(EvmcContainer::new::<#type_ident>(new_instance)))
         }
     }
 }
@@ -180,7 +180,7 @@ fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 
     quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
-            Box::new(EvmcContainer::from_ffi_pointer::<#type_ident>(instance));
+            EvmcContainer::from_ffi_pointer::<#type_ident>(instance);
         }
     }
 }
@@ -220,45 +220,6 @@ fn build_static_data(
     quote! {
         static #static_name_ident: &'static str = #stylized_name_literal;
         static #static_version_ident: &'static str = #version_literal;
-    }
-}
-
-/// Generates a definition and impl for a struct which contains the EVMC instance needed by FFI,
-/// and the user-defined VM.
-// TODO: Move this struct and impl into evmc_vm.
-fn build_vm_container() -> proc_macro2::TokenStream {
-    quote! {
-        struct EvmcContainer<T: ::evmc_vm::EvmcVm + Sized> {
-            instance: ::evmc_sys::evmc_instance,
-            vm: T,
-        }
-
-        impl<T: ::evmc_vm::EvmcVm + Sized>  EvmcContainer<T> {
-            pub fn new(_instance: ::evmc_sys::evmc_instance) -> Self {
-                T {
-                    instance: _instance,
-                    vm: T::init(),
-                }
-            }
-
-            pub unsafe fn from_ffi_pointer(instance: *mut ::evmc_sys::evmc_instance) -> Self {
-                if let Some(container) = (instance as *mut EvmcContainer).as_ref() {
-                    let ret = container.clone();
-                    Box::from_raw(instance);
-                    ret
-                } else {
-                    panic!("instance is null");
-                }
-            }
-
-            pub unsafe fn into_ffi_pointer(mut self) -> *mut ::evmc_sys::evmc_instance {
-                Box::into_raw(Box::new(self)) as *mut ::evmc_sys::evmc_instance
-            }
-
-            pub fn execute(&self, code: &[u8], context: &::evmc_vm::ExecutionContext) -> ::evmc_vm::ExecutionResult {
-                self.vm.execute(code, context)
-            }
-        }
     }
 }
 
