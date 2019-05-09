@@ -18,6 +18,67 @@ use syn::Meta;
 use syn::MetaList;
 use syn::NestedMeta;
 
+struct VMNameSet {
+    type_name: String,
+    name_allcaps: String,
+    name_lowercase: String,
+}
+
+impl VMNameSet {
+    fn new(ident: String) -> Self {
+        let caps = ident.to_shouty_snake_case();
+        let lowercase = ident
+            .to_snake_case()
+            .chars()
+            .filter(|c| *c != '_')
+            .collect();
+        VMNameSet {
+            type_name: ident,
+            name_allcaps: caps,
+            name_lowercase: lowercase,
+        }
+    }
+
+    /// Return a reference to the struct name, as a string.
+    fn get_type_name(&self) -> &String {
+        &self.type_name
+    }
+
+    /// Return a reference to the name in shouty snake case.
+    fn get_name_caps(&self) -> &String {
+        &self.name_allcaps
+    }
+
+    /// Return a reference to the name in lowercase, with all underscores removed. (Used for
+    /// symbols like evmc_create_vmname)
+    fn get_name_lowercase(&self) -> &String {
+        &self.name_lowercase
+    }
+
+    /// Get the struct's name as an explicit identifier to be interpolated with quote.
+    fn get_type_as_ident(&self) -> Ident {
+        Ident::new(&self.type_name, self.type_name.span())
+    }
+
+    /// Get the lowercase name appended with arbitrary text as an explicit ident.
+    fn get_lowercase_as_ident_append(&self, suffix: &str) -> Ident {
+        let concat = format!("{}{}", &self.name_lowercase, suffix);
+        Ident::new(&concat, self.name_lowercase.span())
+    }
+
+    /// Get the lowercase name prepended with arbitrary text as an explicit ident.
+    fn get_lowercase_as_ident_prepend(&self, prefix: &str) -> Ident {
+        let concat = format!("{}{}", prefix, &self.name_lowercase);
+        Ident::new(&concat, self.name_lowercase.span())
+    }
+
+    /// Get the lowercase name appended with arbitrary text as an explicit ident.
+    fn get_caps_as_ident_append(&self, suffix: &str) -> Ident {
+        let concat = format!("{}{}", &self.name_allcaps, suffix);
+        Ident::new(&concat, self.name_allcaps.span())
+    }
+}
+
 #[proc_macro_attribute]
 pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // First, try to parse the input token stream into an AST node representing a struct
@@ -27,15 +88,8 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     // Extract the identifier of the struct from the AST node.
     let vm_type_name: String = input.ident.to_string();
 
-    // Get the name in shouty snake case for the statically defined VM data.
-    let vm_name_allcaps: String = vm_type_name.to_shouty_snake_case();
-
-    // Get the name in snake case and strip the underscores for the symbol name.
-    let vm_name_lowercase: String = vm_type_name
-        .to_snake_case()
-        .chars()
-        .filter(|c| *c != '_')
-        .collect();
+    // Build the VM name set.
+    let names = VMNameSet::new(vm_type_name);
 
     // Parse the attribute meta-items for the name and version. Verify param count.
     let meta = parse_macro_input!(args as MetaList);
@@ -72,12 +126,11 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     let vm_version_string = env!("CARGO_PKG_VERSION").to_string();
 
     // Get all the tokens from the respective helpers.
-    let static_data_tokens =
-        build_static_data(&vm_name_stylized, &vm_name_allcaps, &vm_version_string);
-    let capabilities_tokens = build_capabilities_fn(&vm_name_lowercase, vm_capabilities);
-    let create_tokens = build_create_fn(&vm_name_lowercase, &vm_name_allcaps, &vm_type_name);
-    let destroy_tokens = build_destroy_fn(&vm_name_lowercase, &vm_type_name);
-    let execute_tokens = build_execute_fn(&vm_name_lowercase, &vm_type_name);
+    let static_data_tokens = build_static_data(&names, &vm_name_stylized, &vm_version_string);
+    let capabilities_tokens = build_capabilities_fn(&names, vm_capabilities);
+    let create_tokens = build_create_fn(&names);
+    let destroy_tokens = build_destroy_fn(&names);
+    let execute_tokens = build_execute_fn(&names);
 
     let quoted = quote! {
         #input
@@ -91,10 +144,9 @@ pub fn evmc_declare_vm(args: TokenStream, item: TokenStream) -> TokenStream {
     quoted.into()
 }
 
-fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2::TokenStream {
-    let fn_name_string = format!("{}_execute", name_lowercase);
-    let fn_name_ident = Ident::new(&fn_name_string, name_lowercase.span());
-    let type_name_ident = Ident::new(type_name, type_name.span());
+fn build_execute_fn(names: &VMNameSet) -> proc_macro2::TokenStream {
+    let fn_name_ident = names.get_lowercase_as_ident_append("_execute");
+    let type_name_ident = names.get_type_as_ident();
 
     quote! {
         extern "C" fn #fn_name_ident(
@@ -132,26 +184,15 @@ fn build_execute_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 }
 
 /// Takes an identifier and struct definition, builds an evmc_create_* function for FFI.
-fn build_create_fn(
-    name_lowercase: &String,
-    name_caps: &String,
-    type_name: &String,
-) -> proc_macro2::TokenStream {
-    let fn_name = format!("evmc_create_{}", name_lowercase);
-    let fn_ident = Ident::new(&fn_name, name_lowercase.span());
-    let type_ident = Ident::new(type_name, type_name.span());
+fn build_create_fn(names: &VMNameSet) -> proc_macro2::TokenStream {
+    let type_ident = names.get_type_as_ident();
+    let fn_ident = names.get_lowercase_as_ident_prepend("evmc_create_");
 
-    // TODO: reduce code duplication here.
-    let capabilities_fn_string = format!("{}_get_capabilities", name_lowercase);
-    let capabilities_fn_ident = Ident::new(&capabilities_fn_string, name_lowercase.span());
-    let destroy_fn_string = format!("{}_destroy", name_lowercase);
-    let destroy_fn_ident = Ident::new(&destroy_fn_string, name_lowercase.span());
-    let static_name_string = format!("{}_NAME", name_caps);
-    let static_version_string = format!("{}_VERSION", name_caps);
-    let static_name_ident = Ident::new(&static_name_string, name_caps.span());
-    let static_version_ident = Ident::new(&static_version_string, name_caps.span());
-    let execute_fn_string = format!("{}_execute", name_lowercase);
-    let execute_fn_ident = Ident::new(&execute_fn_string, name_lowercase.span());
+    let execute_fn_ident = names.get_lowercase_as_ident_append("_execute");
+    let capabilities_fn_ident = names.get_lowercase_as_ident_append("_get_capabilities");
+    let destroy_fn_ident = names.get_lowercase_as_ident_append("_destroy");
+    let static_version_ident = names.get_caps_as_ident_append("_VERSION");
+    let static_name_ident = names.get_caps_as_ident_append("_NAME");
 
     quote! {
         #[no_mangle]
@@ -173,10 +214,9 @@ fn build_create_fn(
 }
 
 /// Builds a callback to dispose of the VM instance
-fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> proc_macro2::TokenStream {
-    let fn_ident_string = format!("{}_destroy", name_lowercase);
-    let fn_ident = Ident::new(&fn_ident_string, name_lowercase.span());
-    let type_ident = Ident::new(type_name, type_name.span());
+fn build_destroy_fn(names: &VMNameSet) -> proc_macro2::TokenStream {
+    let type_ident = names.get_type_as_ident();
+    let fn_ident = names.get_lowercase_as_ident_append("_destroy");
 
     quote! {
         extern "C" fn #fn_ident(instance: *mut ::evmc_sys::evmc_instance) {
@@ -186,10 +226,9 @@ fn build_destroy_fn(name_lowercase: &String, type_name: &String) -> proc_macro2:
 }
 
 /// Takes a capabilities flag and builds the evmc_get_capabilities callback.
-fn build_capabilities_fn(name_lowercase: &String, capabilities: u32) -> proc_macro2::TokenStream {
+fn build_capabilities_fn(names: &VMNameSet, capabilities: u32) -> proc_macro2::TokenStream {
     // Could avoid using a special name and just use get_capabilities.
-    let concatenated = format!("{}_get_capabilities", name_lowercase);
-    let capabilities_fn_ident = Ident::new(&concatenated, name_lowercase.span());
+    let capabilities_fn_ident = names.get_lowercase_as_ident_append("_get_capabilities");
     let capabilities_literal =
         LitInt::new(capabilities as u64, IntSuffix::U32, capabilities.span());
 
@@ -202,15 +241,13 @@ fn build_capabilities_fn(name_lowercase: &String, capabilities: u32) -> proc_mac
 
 /// Generate tokens for the static data associated with an EVMC VM.
 fn build_static_data(
+    names: &VMNameSet,
     name_stylized: &String,
-    name_allcaps: &String,
     version: &String,
 ) -> proc_macro2::TokenStream {
     // Stitch together the VM name and the suffix _NAME
-    let concatenated_name = format!("{}_NAME", name_allcaps);
-    let concatenated_version = format!("{}_VERSION", name_allcaps);
-    let static_name_ident = Ident::new(&concatenated_name, name_allcaps.span());
-    let static_version_ident = Ident::new(&concatenated_version, name_allcaps.span());
+    let static_name_ident = names.get_lowercase_as_ident_append("_NAME");
+    let static_version_ident = names.get_lowercase_as_ident_append("_VERSION");
 
     // Turn the stylized VM name and version into string literals.
     // FIXME: Not sure if the span of name.as_str() is the same as that of name.
